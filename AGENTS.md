@@ -82,10 +82,17 @@ vercel.com → AI Gateway). Without it the app still runs in heuristic mode.
 
 ## Deploying
 
-Production is on Vercel (team `omarcc96-projects`, project `periscope`). Zero
-env vars required — AI Gateway auth is via OIDC. Deploy with `vercel --prod`
-(after `vercel login` + `vercel link`), or connect this GitHub repo in the
-Vercel dashboard for deploy-on-push.
+Production is on Vercel (team `omarcc96-projects`, project `periscope`),
+public URL: https://periscope-sigma.vercel.app. Zero env vars required — AI
+Gateway auth is via OIDC. Deploy with `vercel --prod` (after `vercel login` +
+`vercel link`), or connect this GitHub repo in the Vercel dashboard for
+deploy-on-push.
+
+**One-time account step (currently pending):** the Vercel team needs a credit
+card on file to unlock the AI Gateway's free credits — until then the gateway
+rejects requests and the app runs in heuristic mode. Fix in the Vercel
+dashboard → AI Gateway → add card. Verify with `GET /api/debug-ai` on the
+deployment (returns `{ok: true}` when LLM calls work).
 
 ## Conventions & gotchas
 

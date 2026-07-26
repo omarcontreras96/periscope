@@ -65,9 +65,14 @@ export async function fetchHackerNews(
   limit = 8,
 ): Promise<RawArticle[]> {
   try {
+    // Only stories from the last 45 days — relevance search alone happily
+    // returns decade-old classics.
+    const minCreated = Math.floor(Date.now() / 1000) - 45 * 86400;
     const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(
       query,
-    )}&tags=story&hitsPerPage=${limit}&numericFilters=points>10`;
+    )}&tags=story&hitsPerPage=${limit}&numericFilters=${encodeURIComponent(
+      `points>10,created_at_i>${minCreated}`,
+    )}`;
     const res = await timedFetch(url);
     if (!res.ok) return [];
     const data = await res.json();

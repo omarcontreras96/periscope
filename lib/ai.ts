@@ -23,15 +23,22 @@ export async function askJSON<T>(opts: {
   prompt: string;
   maxOutputTokens?: number;
 }): Promise<T> {
-  const { text } = await generateText({
-    model: MODEL,
-    system:
-      opts.system +
-      "\n\nRespond with a single valid JSON object and nothing else — no markdown fences, no commentary.",
-    prompt: opts.prompt,
-    maxOutputTokens: opts.maxOutputTokens ?? 2500,
-  });
-  return extractJSON<T>(text);
+  try {
+    const { text } = await generateText({
+      model: MODEL,
+      system:
+        opts.system +
+        "\n\nRespond with a single valid JSON object and nothing else — no markdown fences, no commentary.",
+      prompt: opts.prompt,
+      maxOutputTokens: opts.maxOutputTokens ?? 2500,
+    });
+    return extractJSON<T>(text);
+  } catch (err) {
+    // Surface the cause in server logs — callers intentionally swallow this
+    // error to fall back to heuristic mode.
+    console.error("[periscope:ai]", err instanceof Error ? err.message : err);
+    throw err;
+  }
 }
 
 export function extractJSON<T>(text: string): T {

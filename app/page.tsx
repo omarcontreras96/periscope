@@ -231,9 +231,11 @@ export default function Home() {
 
       {degraded && (
         <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-sm text-amber-300">
-          Running in heuristic mode — the AI Gateway isn&apos;t reachable, so
-          ranking and learning use simple rules. On Vercel this works out of the
-          box; locally set <code className="font-mono">AI_GATEWAY_API_KEY</code>.
+          Heuristic mode — the AI Gateway declined the request, so ranking and
+          learning use simple rules. Usual fix: unlock free AI Gateway credits
+          (Vercel dashboard → AI Gateway) or set{" "}
+          <code className="font-mono">AI_GATEWAY_API_KEY</code>. Details at{" "}
+          <a href="/api/debug-ai" className="underline">/api/debug-ai</a>.
         </div>
       )}
       {error && (
