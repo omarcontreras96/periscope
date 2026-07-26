@@ -37,6 +37,8 @@ export default function Home() {
   const loadingRef = useRef(false);
   const articlesRef = useRef<Article[]>([]);
   articlesRef.current = articles;
+  // Synchronous double-react guard — state alone is stale within one tick.
+  const reactedRef = useRef<Set<string>>(new Set());
 
   // Hydrate from localStorage (migrating profiles saved before hypotheses existed).
   useEffect(() => {
@@ -73,6 +75,7 @@ export default function Home() {
     if (!append) {
       setReactions({});
       setPlan({});
+      reactedRef.current = new Set();
     }
     const exclude = append
       ? articlesRef.current.flatMap((a) => [a.id, titleKey(a.title)])
@@ -166,19 +169,26 @@ export default function Home() {
   }, [articles]);
 
   const onFeedback = (article: Article, action: FeedbackAction) => {
-    if (action !== "click" && reactions[article.id]) return;
+    if (action !== "click") {
+      if (reactedRef.current.has(article.id)) return;
+      reactedRef.current.add(article.id);
+    }
     setReactions((r) => ({ ...r, [article.id]: action }));
-    savePending([
-      ...pending,
-      {
-        articleId: article.id,
-        title: article.title,
-        topic: article.topic,
-        source: article.source,
-        action,
-        at: new Date().toISOString(),
-      },
-    ]);
+    setPending((prev) => {
+      const next = [
+        ...prev,
+        {
+          articleId: article.id,
+          title: article.title,
+          topic: article.topic,
+          source: article.source,
+          action,
+          at: new Date().toISOString(),
+        },
+      ];
+      localStorage.setItem(PENDING_KEY, JSON.stringify(next));
+      return next;
+    });
   };
 
   const answerHypothesis = (id: string, status: "confirmed" | "rejected") => {
@@ -236,6 +246,7 @@ export default function Home() {
   const reset = () => {
     localStorage.removeItem(PROFILE_KEY);
     localStorage.removeItem(PENDING_KEY);
+    reactedRef.current = new Set();
     setProfile(null);
     setArticles([]);
     setPlan({});
