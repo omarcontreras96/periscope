@@ -248,6 +248,7 @@ export default function ProfileSidebar({
                 .map((h) => (
                   <li key={h.id}>
                     {h.status === "confirmed" ? "✓" : "✗"} {h.text}
+                    {h.userReply ? ` — “${h.userReply}”` : ""}
                   </li>
                 ))}
             </ul>
