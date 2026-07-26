@@ -9,7 +9,12 @@ export const maxDuration = 180;
  * newline-delimited JSON (AgentEvent per line), ending with a "feed" event.
  */
 export async function POST(req: Request) {
-  const { profile } = (await req.json()) as { profile: UserProfile };
+  const { profile, exclude } = (await req.json()) as {
+    profile: UserProfile;
+    /** Article ids / title keys the client already shows ("load more" pages). */
+    exclude?: string[];
+  };
+  const excludeSet = new Set(Array.isArray(exclude) ? exclude : []);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -18,7 +23,7 @@ export async function POST(req: Request) {
         controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       const ctx: RunContext = { aiOk: aiConfigured() };
       try {
-        const articles = await runOrchestrator(profile, ctx, emit);
+        const articles = await runOrchestrator(profile, ctx, emit, excludeSet);
         emit({ type: "feed", articles, degraded: !ctx.aiOk });
       } catch (err) {
         emit({ type: "error", message: err instanceof Error ? err.message : String(err) });

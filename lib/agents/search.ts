@@ -6,6 +6,7 @@ import {
   fetchHackerNews,
   type RawArticle,
 } from "@/lib/sources";
+import { heuristicKeywords } from "@/lib/text";
 import type {
   AgentEvent,
   Article,
@@ -14,7 +15,9 @@ import type {
   UserProfile,
 } from "@/lib/types";
 
-const PICKS_PER_TOPIC = 6;
+const PICKS_PER_TOPIC = 8;
+
+type Pick = { i: number; score: number; reason: string; keywords?: string[] };
 
 /**
  * Search agent: one instance per planned topic. Pulls candidates from the
@@ -26,15 +29,16 @@ export async function runSearchAgent(
   profile: UserProfile,
   ctx: RunContext,
   emit: (e: AgentEvent) => void,
+  exclude?: Set<string>,
 ): Promise<Article[]> {
   const agent = `search:${plan.topic}`;
   emit({ type: "status", agent, message: `Searching for “${plan.query}”…` });
 
   const [gn, hn] = await Promise.all([
-    fetchGoogleNews(plan.query),
+    fetchGoogleNews(plan.query, 22),
     fetchHackerNews(plan.query),
   ]);
-  const raw = dedupeRaw([...gn, ...hn]).slice(0, 24);
+  const raw = dedupeRaw([...gn, ...hn], exclude).slice(0, 26);
   emit({ type: "articles", topic: plan.topic, count: raw.length });
   if (raw.length === 0) return [];
 
@@ -44,7 +48,7 @@ export async function runSearchAgent(
     message: `Ranking ${raw.length} candidates against your profile…`,
   });
 
-  let picks: { i: number; score: number; reason: string }[];
+  let picks: Pick[];
   try {
     picks = await rankWithLLM(plan, profile, raw);
   } catch {
@@ -64,6 +68,13 @@ export async function runSearchAgent(
       topic: plan.topic,
       score: Math.max(0, Math.min(100, Math.round(p.score))),
       reason: p.reason,
+      keywords:
+        Array.isArray(p.keywords) && p.keywords.length > 0
+          ? p.keywords
+              .filter((k) => typeof k === "string" && k.trim())
+              .map((k) => k.trim().toLowerCase())
+              .slice(0, 5)
+          : heuristicKeywords(raw[p.i].title),
     }));
 }
 
@@ -71,7 +82,7 @@ async function rankWithLLM(
   plan: SearchPlanItem,
   profile: UserProfile,
   raw: RawArticle[],
-): Promise<{ i: number; score: number; reason: string }[]> {
+): Promise<Pick[]> {
   const candidates = raw
     .map(
       (a, i) =>
@@ -79,9 +90,7 @@ async function rankWithLLM(
     )
     .join("\n");
 
-  const result = await askJSON<{
-    picks: { i: number; score: number; reason: string }[];
-  }>({
+  const result = await askJSON<{ picks: Pick[] }>({
     system: `You are the search agent for the topic "${plan.topic}" in a personalized newsfeed. Select the articles this specific user will most want to read.`,
     prompt: `User profile:
 ${JSON.stringify(profile, null, 2)}
@@ -93,11 +102,12 @@ ${candidates}
 
 Pick the best ${PICKS_PER_TOPIC} articles for this user. Rules:
 - Skip anything matching the "avoid" list or clearly duplicating another pick.
-- Respect the preference notes and search hints.
+- Respect the preference notes and search hints. Profile hypotheses: "confirmed" ones are established preferences, "rejected" ones are disproven (assume the opposite), "open" ones are unverified — weigh them lightly.
 - Prefer substantive, recent coverage over churnalism and press-release rewrites.
 - "score" is 0-100 relevance for THIS user. "reason" is one short sentence, addressed to the user, explaining why it was picked (reference their preferences when relevant).
+- "keywords" is 2-5 short lowercase tags describing the article: named entities (people, companies, places) and themes.
 
-Return JSON: {"picks": [{"i": <candidate index>, "score": <0-100>, "reason": "<why>"}]}`,
+Return JSON: {"picks": [{"i": <candidate index>, "score": <0-100>, "reason": "<why>", "keywords": ["...", "..."]}]}`,
   });
   if (!Array.isArray(result.picks)) throw new Error("bad picks");
   return result.picks;
@@ -107,7 +117,7 @@ function rankHeuristically(
   plan: SearchPlanItem,
   profile: UserProfile,
   raw: RawArticle[],
-): { i: number; score: number; reason: string }[] {
+): Pick[] {
   const keywords = profile.interests.flatMap((it) =>
     it.topic.toLowerCase().split(/\s+/),
   );

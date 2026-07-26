@@ -6,6 +6,17 @@ export type Interest = {
   weight: number;
 };
 
+/** A testable hunch the evaluator holds about the user. The user confirms or
+ * rejects it in the UI; all agents read the status on subsequent runs. */
+export type Hypothesis = {
+  id: string;
+  /** One testable sentence about what the user likes or dislikes. */
+  text: string;
+  status: "open" | "confirmed" | "rejected";
+  /** Evaluator's confidence 0..1 when proposed. */
+  confidence: number;
+};
+
 export type UserProfile = {
   interests: Interest[];
   /** Topics/angles the user has signalled they don't want. */
@@ -14,6 +25,8 @@ export type UserProfile = {
   notes: string[];
   /** Learned query-crafting advice the search agents should apply. */
   searchHints: string[];
+  /** Evaluator hunches awaiting or holding user confirmation. */
+  hypotheses: Hypothesis[];
   /** Bumped by the evaluator on every update. */
   version: number;
 };
@@ -40,6 +53,8 @@ export type Article = {
   score: number;
   /** Why this article was picked for this user. */
   reason: string;
+  /** 2-5 short tags describing the article (entities, themes). */
+  keywords: string[];
 };
 
 export type SearchPlanItem = {

@@ -37,8 +37,26 @@ Search agents (one per planned topic)
 ```
 
 The **self-improvement loop**: evaluator output (weights, `avoid`, `notes`,
-`searchHints`) is fed back into the orchestrator's planning prompt and the
-search agents' ranking prompts on every run. The profile is the shared memory.
+`searchHints`, `hypotheses`) is fed back into the orchestrator's planning
+prompt and the search agents' ranking prompts on every run. The profile is the
+shared memory.
+
+**Hypothesis loop:** the evaluator also proposes testable hunches
+(`profile.hypotheses`, status `open`) — e.g. "you follow SpaceX launches, not
+space policy". The UI asks the user to confirm/reject; the answer is written
+into the profile, and the orchestrator treats `confirmed` as established
+preference, `rejected` as disproven, and may shape one query to *test* an open
+hypothesis. On the next tune, the evaluator folds confirmed hypotheses into
+notes/searchHints. User answers are never overwritten by the LLM (prompt rule
++ `sanitizeProfile`).
+
+**Feed UX:** articles carry 2-5 `keywords` (LLM-tagged; heuristic fallback in
+`lib/text.ts`), render as compact 2-column cards grouped into per-topic
+buckets (header shows the search query + plan rationale; per-article "why" is
+in the title tooltip). Feed size is 28 (4 topics × up to 8). "Load more"
+re-runs the pipeline with an `exclude` list (article ids + normalized title
+keys) so new pages contain only unseen stories. Interests are editable in
+place in the sidebar (add/remove/±weight, un-avoid) — no reset needed.
 
 - **State:** the whole profile lives in the browser's localStorage and is sent
   with each request. No database — deliberate hackathon tradeoff. The server is
@@ -57,9 +75,10 @@ search agents' ranking prompts on every run. The profile is the shared memory.
 
 | Path | What it is |
 |---|---|
-| `lib/types.ts` | All shared types (`UserProfile`, `Article`, `AgentEvent`…) — start here |
+| `lib/types.ts` | All shared types (`UserProfile`, `Hypothesis`, `Article`, `AgentEvent`…) — start here |
 | `lib/ai.ts` | AI Gateway wrapper: `askJSON()` + `aiConfigured()` |
-| `lib/sources.ts` | News source adapters (Google News RSS, HN Algolia) + dedupe |
+| `lib/text.ts` | Client-safe helpers: `hashId`, `titleKey`, `heuristicKeywords` |
+| `lib/sources.ts` | News source adapters (Google News RSS, HN Algolia) + dedupe/exclude |
 | `lib/agents/orchestrator.ts` | Plans searches, fans out, merges |
 | `lib/agents/search.ts` | Per-topic fetch + LLM ranking |
 | `lib/agents/evaluator.ts` | Feedback → updated profile + "learned" summary |

@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { hashId, titleKey } from "@/lib/text";
 
 // Raw article as returned by a news source, before agent ranking.
 export type RawArticle = {
@@ -91,23 +92,25 @@ export async function fetchHackerNews(
 
 /** Cheap stable id from a URL. */
 export function articleId(url: string): string {
-  let h = 0;
-  for (let i = 0; i < url.length; i++) {
-    h = (Math.imul(31, h) + url.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h).toString(36);
+  return hashId(url);
 }
 
-/** Dedupe raw articles by URL and near-identical titles. */
-export function dedupeRaw(articles: RawArticle[]): RawArticle[] {
-  const seenUrl = new Set<string>();
-  const seenTitle = new Set<string>();
+/**
+ * Dedupe raw articles by URL and near-identical titles, dropping anything in
+ * `exclude` (article ids or title keys the client has already seen).
+ */
+export function dedupeRaw(
+  articles: RawArticle[],
+  exclude?: Set<string>,
+): RawArticle[] {
+  const seen = new Set<string>();
   const out: RawArticle[] = [];
   for (const a of articles) {
-    const titleKey = a.title.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 60);
-    if (seenUrl.has(a.url) || seenTitle.has(titleKey)) continue;
-    seenUrl.add(a.url);
-    seenTitle.add(titleKey);
+    const tk = titleKey(a.title);
+    if (seen.has(a.url) || seen.has(tk)) continue;
+    if (exclude && (exclude.has(articleId(a.url)) || exclude.has(tk))) continue;
+    seen.add(a.url);
+    seen.add(tk);
     out.push(a);
   }
   return out;

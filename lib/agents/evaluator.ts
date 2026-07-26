@@ -1,5 +1,11 @@
 import { askJSON } from "@/lib/ai";
-import type { FeedbackEvent, Interest, UserProfile } from "@/lib/types";
+import { hashId } from "@/lib/text";
+import type {
+  FeedbackEvent,
+  Hypothesis,
+  Interest,
+  UserProfile,
+} from "@/lib/types";
 
 /**
  * Evaluator agent: turns raw feedback events into an updated preference
@@ -42,6 +48,10 @@ Rewrite the profile. Rules:
 - avoid: topics or angles to exclude. Keep at most 6, most recent signals win.
 - notes: durable preference observations in third person ("prefers technical depth over business coverage"). Keep at most 5.
 - searchHints: concrete advice for crafting future search queries based on what worked ("add 'research' or 'benchmark' to AI queries, skip 'raises'"). Keep at most 4.
+- hypotheses: your running hunches about this user, which the UI will ask them to confirm or reject. Max 4 total. Each is {"id": "<short id>", "text": "<one testable sentence>", "status": "open"|"confirmed"|"rejected", "confidence": 0-1}.
+  * Propose 1-2 NEW "open" hypotheses from patterns in the feedback — favor angle- or entity-level insights ("you follow SpaceX launches, not space policy") over topic-level ones, and don't restate what notes already say.
+  * NEVER change a "confirmed" or "rejected" status — those are the user's own answers. Fold confirmed ones into notes/searchHints, after which you may drop them from the list. Keep rejected ones briefly so you don't re-propose them.
+  * Drop open hypotheses the new feedback contradicts.
 - version: increment by 1.
 - learned: 2-4 short first-person-plural bullets for the user explaining what changed and why ("Noticed you skipped both funding stories — dialing back business news.").
 
@@ -99,10 +109,41 @@ function evaluateHeuristically(
       ...profile,
       interests: [...interests.values()],
       avoid: [...avoid].slice(-6),
+      hypotheses: heuristicHypotheses(profile, feedback),
       version: profile.version + 1,
     },
     learned,
   };
+}
+
+/** Rule-based hypothesis proposals when the LLM is unavailable. */
+function heuristicHypotheses(
+  profile: UserProfile,
+  feedback: FeedbackEvent[],
+): Hypothesis[] {
+  const pos = new Map<string, number>();
+  const neg = new Map<string, number>();
+  for (const f of feedback) {
+    const m = f.action === "dislike" || f.action === "less" ? neg : pos;
+    m.set(f.topic, (m.get(f.topic) ?? 0) + 1);
+  }
+  const existing = profile.hypotheses ?? [];
+  const known = new Set(existing.map((h) => h.text.toLowerCase()));
+  const fresh: Hypothesis[] = [];
+  for (const [topic, n] of neg) {
+    const text = `You're losing interest in ${topic}.`;
+    if (n >= 2 && !known.has(text.toLowerCase())) {
+      fresh.push({ id: hashId(text), text, status: "open", confidence: 0.6 });
+    }
+  }
+  for (const [topic, n] of pos) {
+    const text = `You want deeper coverage of ${topic}.`;
+    if (n >= 2 && !known.has(text.toLowerCase())) {
+      fresh.push({ id: hashId(text), text, status: "open", confidence: 0.6 });
+    }
+  }
+  // Keep user answers; cap the list at 4 with newest proposals last.
+  return [...existing, ...fresh].slice(-4);
 }
 
 /** Guard against malformed LLM output so a bad update can't corrupt the profile. */
@@ -118,11 +159,25 @@ function sanitizeProfile(next: UserProfile, prev: UserProfile): UserProfile {
     Array.isArray(v)
       ? v.filter((s) => typeof s === "string" && s.trim()).slice(0, max)
       : fallback;
+  const hypotheses: Hypothesis[] = Array.isArray(next.hypotheses)
+    ? next.hypotheses
+        .filter((h) => h && typeof h.text === "string" && h.text.trim())
+        .map((h) => ({
+          id: typeof h.id === "string" && h.id ? h.id : hashId(h.text),
+          text: h.text.trim(),
+          status: ["open", "confirmed", "rejected"].includes(h.status)
+            ? h.status
+            : "open",
+          confidence: clamp(h.confidence),
+        }))
+        .slice(0, 4)
+    : (prev.hypotheses ?? []);
   return {
     interests: interests.length > 0 ? interests : prev.interests,
     avoid: strList(next.avoid, 6, prev.avoid),
     notes: strList(next.notes, 5, prev.notes),
     searchHints: strList(next.searchHints, 4, prev.searchHints),
+    hypotheses,
     version: prev.version + 1,
   };
 }
