@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🔭 Periscope — a newsfeed that learns you
 
-## Getting Started
+Self-improving, multi-agent newsfeed built in one day at the SundAI SF hack
+(Jul 26, 2026) by Omar ([@omarcontreras96](https://github.com/omarcontreras96))
+and James ([@128k](https://github.com/128k)).
 
-First, run the development server:
+**The loop:** an **orchestrator agent** reads your preference profile and plans
+what to search (including one deliberate "exploration" pick) → parallel
+**search agents** pull candidates from Google News RSS + Hacker News and
+LLM-rank them against your profile, each pick annotated with *why you're seeing
+it* → you react with 👍/👎/clicks → the **evaluator agent** rewrites your
+profile: interest weights, an avoid-list, durable preference notes, and
+concrete search hints the other agents apply on the next run. The feed visibly
+gets better while you watch — the agent-activity panel shows the pipeline live.
+
+## Quickstart
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # → http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+No database, no required API keys:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **News sources** are keyless (Google News RSS, HN Algolia).
+- **LLM calls** go through the Vercel AI Gateway (`anthropic/claude-opus-4-8`).
+  On Vercel this authenticates automatically (OIDC). Locally, copy
+  `.env.example` → `.env.local` and set `AI_GATEWAY_API_KEY`.
+- Without gateway access everything still works in **heuristic mode**
+  (recency/keyword ranking, rule-based learning) — the UI shows a banner.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Architecture
 
-## Learn More
+See [AGENTS.md](AGENTS.md) for the full architecture, file map, and
+conventions (that file is also the context brief for Claude Code / coding
+agents — `CLAUDE.md` points at it).
 
-To learn more about Next.js, take a look at the following resources:
+```
+profile (localStorage) ──▶ orchestrator ──▶ search agents ×4 ──▶ ranked feed
+        ▲                                                             │
+        └────────────── evaluator ◀────────── 👍/👎/click feedback ◀──┘
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## maritime.sh & autolab
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Assessed as part of the hack — where they fit and why they're not in the demo
+path: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md). Short version:
+**maritime.sh** is where the agents should *run* next (scheduled, memory-
+bearing, wake-on-trigger containers); **autolab** is how the agents should
+*improve* next (offline experiments A/B-testing evaluator prompts against
+replayed feedback sessions).
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Vercel, zero config: `vercel --prod`, or import the repo in the Vercel
+dashboard for deploy-on-push. No env vars required in production.
