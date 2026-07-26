@@ -15,6 +15,8 @@ export type Hypothesis = {
   status: "open" | "confirmed" | "rejected";
   /** Evaluator's confidence 0..1 when proposed. */
   confidence: number;
+  /** The user's own correction when rejecting ("then what?") — ground truth. */
+  userReply?: string;
 };
 
 export type UserProfile = {
@@ -25,6 +27,9 @@ export type UserProfile = {
   notes: string[];
   /** Learned query-crafting advice the search agents should apply. */
   searchHints: string[];
+  /** Phrase-level hard filters (finer than avoid): any candidate whose title
+   * contains one of these is dropped before ranking. Max ~10. */
+  muted: string[];
   /** Evaluator hunches awaiting or holding user confirmation. */
   hypotheses: Hypothesis[];
   /** Bumped by the evaluator on every update. */

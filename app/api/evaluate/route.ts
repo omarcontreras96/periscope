@@ -19,6 +19,9 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  // Older clients may send profiles without newer fields.
+  profile.muted = profile.muted ?? [];
+  profile.hypotheses = profile.hypotheses ?? [];
 
   const result = await runEvaluator(profile, feedback);
   return Response.json(result);

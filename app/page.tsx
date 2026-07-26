@@ -6,7 +6,7 @@ import ArticleCard from "@/components/ArticleCard";
 import HypothesisCard from "@/components/HypothesisCard";
 import Onboarding from "@/components/Onboarding";
 import ProfileSidebar from "@/components/ProfileSidebar";
-import { titleKey } from "@/lib/text";
+import { dedupeCI, includesCI, removeCI, titleKey } from "@/lib/text";
 import type {
   AgentEvent,
   Article,
@@ -47,6 +47,7 @@ export default function Home() {
       if (p) {
         const parsed = JSON.parse(p) as UserProfile;
         parsed.hypotheses = parsed.hypotheses ?? [];
+        parsed.muted = parsed.muted ?? [];
         setProfile(parsed);
       }
       const f = localStorage.getItem(PENDING_KEY);
@@ -191,21 +192,58 @@ export default function Home() {
     });
   };
 
-  const answerHypothesis = (id: string, status: "confirmed" | "rejected") => {
+  const answerHypothesis = (
+    id: string,
+    status: "confirmed" | "rejected",
+    userReply?: string,
+  ) => {
     if (!profile) return;
     saveProfile({
       ...profile,
       hypotheses: profile.hypotheses.map((h) =>
-        h.id === id ? { ...h, status } : h,
+        h.id === id ? { ...h, status, userReply: userReply ?? h.userReply } : h,
       ),
     });
     setLog((l) => [
       ...l,
       {
         agent: "evaluator",
-        message: `Hypothesis ${status} by you — the next search plan will use it.`,
+        message: userReply
+          ? `Hypothesis ${status} — you taught it: “${userReply}”. The next search plan will use this.`
+          : `Hypothesis ${status} by you — the next search plan will use it.`,
       },
     ]);
+  };
+
+  /** Follow/mute from a keyword chip — keeps interests/avoid/muted symmetric. */
+  const onKeyword = (keyword: string, action: "follow" | "mute") => {
+    if (!profile) return;
+    if (action === "follow") {
+      saveProfile({
+        ...profile,
+        interests: includesCI(profile.interests.map((i) => i.topic), keyword)
+          ? profile.interests
+          : [...profile.interests, { topic: keyword, weight: 0.55 }].slice(0, 8),
+        avoid: removeCI(profile.avoid, keyword),
+        muted: removeCI(profile.muted, keyword),
+      });
+      setLog((l) => [
+        ...l,
+        { agent: "orchestrator", message: `Now following “${keyword}” — applies on next refresh.` },
+      ]);
+    } else {
+      saveProfile({
+        ...profile,
+        muted: dedupeCI([...profile.muted, keyword]).slice(0, 10),
+        interests: profile.interests.filter(
+          (i) => i.topic.toLowerCase() !== keyword.toLowerCase(),
+        ),
+      });
+      setLog((l) => [
+        ...l,
+        { agent: "orchestrator", message: `Muted “${keyword}” — matching stories are dropped on next refresh.` },
+      ]);
+    }
   };
 
   const tune = async () => {
@@ -225,6 +263,7 @@ export default function Home() {
       if (!res.ok) throw new Error(`evaluate request failed (${res.status})`);
       const data = (await res.json()) as EvaluateResponse;
       data.profile.hypotheses = data.profile.hypotheses ?? [];
+      data.profile.muted = data.profile.muted ?? [];
       saveProfile(data.profile);
       savePending([]);
       setLearned(data.learned);
@@ -367,6 +406,7 @@ export default function Home() {
                     article={a}
                     reaction={reactions[a.id]}
                     onFeedback={(action) => onFeedback(a, action)}
+                    onKeyword={onKeyword}
                   />
                 ))}
               </div>
@@ -383,9 +423,9 @@ export default function Home() {
                 {loading ? "Fetching more news…" : "↓ Load more news"}
               </button>
               <p className="text-center text-[11px] text-muted/60">
-                {articles.length} stories · Google News RSS · Hacker News —
-                react to {TUNE_THRESHOLD}+ articles, then ✨ Tune to teach the
-                feed.
+                {articles.length} stories · Google News · Bing News · Hacker
+                News (paywalled outlets filtered) — react to {TUNE_THRESHOLD}+
+                articles, then ✨ Tune to teach the feed.
               </p>
             </div>
           )}

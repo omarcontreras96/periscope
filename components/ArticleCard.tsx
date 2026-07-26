@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Article, FeedbackAction } from "@/lib/types";
 
 function timeAgo(iso: string): string {
@@ -11,17 +12,20 @@ function timeAgo(iso: string): string {
 
 /**
  * Compact card: metadata line, two-line title (full "why picked" reason in the
- * tooltip), keyword tags, and inline 👍/👎.
+ * tooltip), clickable keyword tags (follow/mute), and inline 👍/👎.
  */
 export default function ArticleCard({
   article,
   reaction,
   onFeedback,
+  onKeyword,
 }: {
   article: Article;
   reaction?: FeedbackAction;
   onFeedback: (action: FeedbackAction) => void;
+  onKeyword: (keyword: string, action: "follow" | "mute") => void;
 }) {
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   return (
     <article
       className={`flex flex-col rounded-lg border border-line bg-card px-3 py-2.5 transition ${
@@ -48,12 +52,45 @@ export default function ArticleCard({
       </h3>
 
       <div className="mt-auto flex flex-wrap items-center gap-1 pt-1.5">
-        {article.keywords.slice(0, 5).map((k) => (
+        {article.keywords.slice(0, 4).map((k) => (
           <span
             key={k}
-            className="rounded bg-line/70 px-1.5 py-px text-[10px] text-muted"
+            className="relative"
+            onMouseLeave={() => setMenuFor((m) => (m === k ? null : m))}
           >
-            {k}
+            <button
+              onClick={() => setMenuFor((m) => (m === k ? null : k))}
+              title="Follow or mute this keyword"
+              className={`rounded px-1.5 py-px text-[10px] transition ${
+                menuFor === k
+                  ? "bg-accent/20 text-accent"
+                  : "bg-line/70 text-muted hover:bg-line hover:text-foreground"
+              }`}
+            >
+              {k}
+            </button>
+            {menuFor === k && (
+              <span className="absolute bottom-full left-0 z-20 mb-1 flex w-max flex-col overflow-hidden rounded-md border border-line bg-card shadow-lg">
+                <button
+                  onClick={() => {
+                    onKeyword(k, "follow");
+                    setMenuFor(null);
+                  }}
+                  className="px-2.5 py-1 text-left text-[11px] text-muted transition hover:bg-accent/15 hover:text-accent"
+                >
+                  ➕ Follow “{k}”
+                </button>
+                <button
+                  onClick={() => {
+                    onKeyword(k, "mute");
+                    setMenuFor(null);
+                  }}
+                  className="px-2.5 py-1 text-left text-[11px] text-muted transition hover:bg-red-400/15 hover:text-red-300"
+                >
+                  🚫 Mute “{k}”
+                </button>
+              </span>
+            )}
           </span>
         ))}
         <span className="ml-auto flex items-center gap-1">

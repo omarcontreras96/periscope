@@ -1,5 +1,5 @@
 import { askJSON } from "@/lib/ai";
-import { hashId } from "@/lib/text";
+import { dedupeCI, hashId } from "@/lib/text";
 import type {
   FeedbackEvent,
   Hypothesis,
@@ -48,9 +48,11 @@ Rewrite the profile. Rules:
 - avoid: topics or angles to exclude. Keep at most 6, most recent signals win.
 - notes: durable preference observations in third person ("prefers technical depth over business coverage"). Keep at most 5.
 - searchHints: concrete advice for crafting future search queries based on what worked ("add 'research' or 'benchmark' to AI queries, skip 'raises'"). Keep at most 4.
+- muted: phrase-level hard filters — any article whose title contains one of these is dropped before ranking. You may ADD up to 2 phrases when feedback shows a repeated disliked entity or angle inside an otherwise-liked topic (e.g. topic Soccer liked, but every disliked title mentions "transfer rumors"). NEVER remove existing entries — removal is the user's call. Max 10.
 - hypotheses: your running hunches about this user, which the UI will ask them to confirm or reject. Max 4 total. Each is {"id": "<short id>", "text": "<one testable sentence>", "status": "open"|"confirmed"|"rejected", "confidence": 0-1}.
   * Propose 1-2 NEW "open" hypotheses from patterns in the feedback — favor angle- or entity-level insights ("you follow SpaceX launches, not space policy") over topic-level ones, and don't restate what notes already say.
   * NEVER change a "confirmed" or "rejected" status — those are the user's own answers. Fold confirmed ones into notes/searchHints, after which you may drop them from the list. Keep rejected ones briefly so you don't re-propose them.
+  * A rejected hypothesis carrying "userReply" is the user's own correction in their words — treat it as ground truth. Fold it into interests/notes/muted/searchHints now, then you may drop that hypothesis.
   * Drop open hypotheses the new feedback contradicts.
 - version: increment by 1.
 - learned: 2-4 short first-person-plural bullets for the user explaining what changed and why ("Noticed you skipped both funding stories — dialing back business news.").
@@ -159,24 +161,37 @@ function sanitizeProfile(next: UserProfile, prev: UserProfile): UserProfile {
     Array.isArray(v)
       ? v.filter((s) => typeof s === "string" && s.trim()).slice(0, max)
       : fallback;
+  // userReply is user-authored — always carried over from prev by id, never
+  // trusted from (or stripped by) LLM output.
+  const prevById = new Map((prev.hypotheses ?? []).map((h) => [h.id, h]));
   const hypotheses: Hypothesis[] = Array.isArray(next.hypotheses)
     ? next.hypotheses
         .filter((h) => h && typeof h.text === "string" && h.text.trim())
-        .map((h) => ({
-          id: typeof h.id === "string" && h.id ? h.id : hashId(h.text),
-          text: h.text.trim(),
-          status: ["open", "confirmed", "rejected"].includes(h.status)
-            ? h.status
-            : "open",
-          confidence: clamp(h.confidence),
-        }))
+        .map((h) => {
+          const id = typeof h.id === "string" && h.id ? h.id : hashId(h.text);
+          return {
+            id,
+            text: h.text.trim(),
+            status: ["open", "confirmed", "rejected"].includes(h.status)
+              ? h.status
+              : "open",
+            confidence: clamp(h.confidence),
+            userReply: prevById.get(id)?.userReply,
+          };
+        })
         .slice(0, 4)
     : (prev.hypotheses ?? []);
+  // muted is add-only for the LLM; removal happens in the UI.
+  const muted = dedupeCI([
+    ...(prev.muted ?? []),
+    ...strList(next.muted, 10, []),
+  ]).slice(0, 10);
   return {
     interests: interests.length > 0 ? interests : prev.interests,
     avoid: strList(next.avoid, 6, prev.avoid),
     notes: strList(next.notes, 5, prev.notes),
     searchHints: strList(next.searchHints, 4, prev.searchHints),
+    muted,
     hypotheses,
     version: prev.version + 1,
   };

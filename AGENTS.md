@@ -50,13 +50,34 @@ hypothesis. On the next tune, the evaluator folds confirmed hypotheses into
 notes/searchHints. User answers are never overwritten by the LLM (prompt rule
 + `sanitizeProfile`).
 
-**Feed UX:** articles carry 2-5 `keywords` (LLM-tagged; heuristic fallback in
-`lib/text.ts`), render as compact 2-column cards grouped into per-topic
-buckets (header shows the search query + plan rationale; per-article "why" is
-in the title tooltip). Feed size is 28 (4 topics × up to 8). "Load more"
-re-runs the pipeline with an `exclude` list (article ids + normalized title
-keys) so new pages contain only unseen stories. Interests are editable in
-place in the sidebar (add/remove/±weight, un-avoid) — no reset needed.
+**Feed UX:** articles carry 2-4 semantic `keywords` — Proper-Cased multi-word
+entities/concepts ("Real Madrid", not "real"+"madrid"); LLM-tagged with a
+capitalized-run entity extractor fallback in `lib/text.ts`. Keyword chips are
+clickable (NewsNow-style): ➕ Follow adds an interest, 🚫 Mute adds to
+`profile.muted`. Cards render compact 2-column, grouped into per-topic buckets
+(header shows the search query + plan rationale; per-article "why" is in the
+title tooltip). Feed size is 28 (4 topics × up to 8). "Load more" re-runs the
+pipeline with an `exclude` list (article ids + normalized title keys) so new
+pages contain only unseen stories. Interests are editable in place in the
+sidebar (add/remove/±weight, un-avoid, mute/unmute) — no reset needed.
+
+**Muted keywords (`profile.muted`)**: phrase-level hard filters below topic
+granularity ("follow Soccer, but never transfer rumors"). Enforced in
+`lib/agents/search.ts` pre-ranking via `matchesPhrase` (Unicode-boundary
+match — muting "AI" won't hit "Spain"). The evaluator may ADD muted phrases
+but never remove (user-only via sidebar); `sanitizeProfile` enforces this.
+
+**Hypothesis `userReply`**: rejecting a hunch asks "then what?" — the reply is
+stored on the hypothesis, treated as ground truth by orchestrator (next
+Refresh) and folded durably by the evaluator (next Tune). `sanitizeProfile`
+carries `userReply` from the previous profile only — LLM output can't alter it.
+
+**Sources:** Google News RSS + Bing News RSS (both query-capable, keyless;
+Bing article URLs are resolved from its apiclick redirect) + Hacker News
+Algolia. (Yahoo News RSS was tried and dropped — it serves HTML, not RSS.)
+Interleaved round-robin before slicing so no aggregator dominates. Hard-paywalled outlets (WSJ, NYT, Bloomberg, WaPo, FT,
+Economist, Athletic, The Information, Business Insider, Barron's, LA Times)
+are filtered by outlet name AND domain in `lib/sources.ts:isPaywalled`.
 
 - **State:** the whole profile lives in the browser's localStorage and is sent
   with each request. No database — deliberate hackathon tradeoff. The server is

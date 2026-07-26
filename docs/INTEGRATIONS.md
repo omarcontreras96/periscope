@@ -27,11 +27,25 @@ next step for exactly those gaps:
    let search agents read paywalled-preview/JS-rendered pages instead of RSS
    only.
 
-**Integration sketch:** extract `lib/agents/*` + `lib/sources.ts` (already
-UI-independent, pure TS) into a small worker, deploy with `maritime create`,
-trigger via maritime's scheduler, and have it POST results to a cache the
-Next.js app reads. Est. effort: ~2–3h. Skipped in the demo window because it
-requires an account/wallet and adds a second deploy target.
+**What it would take — concrete (researched from their quickstart):**
+
+```bash
+npm install -g maritime-cli && maritime login
+# package lib/agents/* + lib/sources.ts as a small worker with a Dockerfile
+maritime create periscope-refresher --repo https://github.com/omarcontreras96/periscope
+maritime env set periscope-refresher AI_GATEWAY_API_KEY=...   # secrets encrypted by default
+maritime deploy periscope-refresher                            # cron/webhook/API triggers
+maritime sleep periscope-refresher                             # pause billing when idle
+```
+
+Steps: (1) Maritime account + wallet; (2) a `worker/` entry that loops stored
+profiles → `runOrchestrator` → writes ranked feeds to a cache (needs Upstash/
+Vercel KV, since the app is currently stateless); (3) cron trigger hourly;
+(4) the Next.js feed route reads cache-first. Est. ~2–3h.
+**How it improves the build:** instant feed loads (no 15–30s pipeline wait),
+the feed refreshes while the tab is closed ("self-improving even when you're
+away"), and their OpenClaw-Browser template adds Playwright scraping for
+JS-rendered pages our RSS adapters can't read. Blocked on: account/wallet.
 
 ## autolab — how the agents should improve
 
@@ -55,11 +69,27 @@ for that:
 3. **Regression harness** — before shipping a prompt change, `autolab start`
    a replay suite so "did we make the feed dumber?" has a number attached.
 
-**Integration sketch:** log anonymized (profile, feedback, feed) triples to a
-JSONL file, `autolab init` a project with a replay-scoring script, and let the
-autolab agent iterate on `lib/agents/evaluator.ts` prompts. Est. effort: ~2h
-for the harness. Skipped in the demo window because it needs logged sessions
-to be useful — a natural post-demo step once real feedback exists.
+**What it would take — concrete (researched from their quickstart):**
+
+```bash
+curl -fsSL https://app.autolab.ai/install.sh | sh && autolab login
+# write eval/replay.ts: replays logged (profile, feedback, feed) sessions and
+# prints how well the evaluator's updated profile predicts held-out likes
+autolab init -y --name "periscope-evaluator" \
+  --objective "maximize held-out like precision" --run "npx tsx eval/replay.ts"
+autolab serve --project you/periscope-evaluator   # any laptop as execution node
+autolab start
+autolab submit --nocode -m "penalize churnalism harder in the rank prompt"
+```
+
+Steps: (1) account + CLI; (2) log anonymized session triples (a ~20-line
+addition to the two API routes) — **prerequisite: real usage data, currently
+zero**; (3) the replay scorer (~1–2h); (4) submit idea-experiments and let
+autolab's agent edit `lib/agents/evaluator.ts` prompts and measure.
+**How it improves the build:** turns evaluator-prompt tweaking from vibes into
+measured experiments — the outer self-improvement loop (today the system
+improves the *profile*; autolab improves the *learner*). Blocked on: account +
+logged sessions.
 
 ## Bottom line
 

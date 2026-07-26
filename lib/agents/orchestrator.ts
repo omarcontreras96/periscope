@@ -68,9 +68,9 @@ ${JSON.stringify(profile, null, 2)}
 Produce a search plan of exactly ${MAX_TOPICS} items. Rules:
 - Weight coverage toward the highest-weight interests, but don't search the same interest twice.
 - Exactly one item should be an EXPLORATION pick: something adjacent to their interests they haven't asked for, to discover new preferences. Mark it "exploration": true.
-- Hypotheses in the profile: treat "confirmed" as established preferences and "rejected" as disproven (assume the opposite). If there is an "open" hypothesis, you may shape ONE query to help test it — say so in that item's rationale.
+- Hypotheses in the profile: treat "confirmed" as established preferences and "rejected" as disproven (assume the opposite). A rejected hypothesis carrying "userReply" is the user's own correction — treat it as authoritative and plan accordingly. If there is an "open" hypothesis, you may shape ONE query to help test it — say so in that item's rationale.
 - Apply the searchHints when crafting query strings. Queries should be concrete news-search strings (3-8 words), not vague topics.
-- Never plan anything on the avoid list.
+- Never plan anything on the avoid list, and never craft queries around muted phrases (those are hard-blocked).
 - "topic" is a short human label (1-3 words); "rationale" is one sentence on why this search, for this user, now.
 
 Return JSON: {"queries": [{"topic": "...", "query": "...", "rationale": "...", "exploration": false}]}`,

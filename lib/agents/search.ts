@@ -2,11 +2,14 @@ import { askJSON } from "@/lib/ai";
 import {
   articleId,
   dedupeRaw,
+  fetchBingNews,
   fetchGoogleNews,
   fetchHackerNews,
+  interleave,
+  isPaywalled,
   type RawArticle,
 } from "@/lib/sources";
-import { heuristicKeywords } from "@/lib/text";
+import { dedupeCI, heuristicKeywords, matchesPhrase } from "@/lib/text";
 import type {
   AgentEvent,
   Article,
@@ -34,11 +37,17 @@ export async function runSearchAgent(
   const agent = `search:${plan.topic}`;
   emit({ type: "status", agent, message: `Searching for “${plan.query}”…` });
 
-  const [gn, hn] = await Promise.all([
-    fetchGoogleNews(plan.query, 22),
-    fetchHackerNews(plan.query),
+  const [gn, bg, hn] = await Promise.all([
+    fetchGoogleNews(plan.query, 14),
+    fetchBingNews(plan.query, 12),
+    fetchHackerNews(plan.query, 6),
   ]);
-  const raw = dedupeRaw([...gn, ...hn], exclude).slice(0, 26);
+  // Interleave before slicing so no aggregator drowns out the others, then
+  // hard-filter paywalled outlets and muted phrases before ranking.
+  const raw = dedupeRaw(interleave([gn, bg, hn]), exclude)
+    .filter((a) => !isPaywalled(a))
+    .filter((a) => !profile.muted.some((m) => matchesPhrase(a.title, m)))
+    .slice(0, 30);
   emit({ type: "articles", topic: plan.topic, count: raw.length });
   if (raw.length === 0) return [];
 
@@ -70,10 +79,15 @@ export async function runSearchAgent(
       reason: p.reason,
       keywords:
         Array.isArray(p.keywords) && p.keywords.length > 0
-          ? p.keywords
-              .filter((k) => typeof k === "string" && k.trim())
-              .map((k) => k.trim().toLowerCase())
-              .slice(0, 5)
+          ? dedupeCI(
+              p.keywords.filter(
+                (k) =>
+                  typeof k === "string" &&
+                  k.trim() &&
+                  k.trim().length <= 32 &&
+                  k.trim().split(/\s+/).length <= 4,
+              ),
+            ).slice(0, 4)
           : heuristicKeywords(raw[p.i].title),
     }));
 }
@@ -105,7 +119,7 @@ Pick the best ${PICKS_PER_TOPIC} articles for this user. Rules:
 - Respect the preference notes and search hints. Profile hypotheses: "confirmed" ones are established preferences, "rejected" ones are disproven (assume the opposite), "open" ones are unverified — weigh them lightly.
 - Prefer substantive, recent coverage over churnalism and press-release rewrites.
 - "score" is 0-100 relevance for THIS user. "reason" is one short sentence, addressed to the user, explaining why it was picked (reference their preferences when relevant).
-- "keywords" is 2-5 short lowercase tags describing the article: named entities (people, companies, places) and themes.
+- "keywords" is 2-4 semantic concept tags per article: Proper-Cased named entities and multi-word concepts (e.g. "Real Madrid", "Yan Diomandé", "transfer market", "Fed rate cut"). A multi-word name is ONE keyword, never split. No generic words ("news", "update", "latest").
 
 Return JSON: {"picks": [{"i": <candidate index>, "score": <0-100>, "reason": "<why>", "keywords": ["...", "..."]}]}`,
   });

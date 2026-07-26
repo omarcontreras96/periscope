@@ -60,6 +60,106 @@ export async function fetchGoogleNews(
   }
 }
 
+/** Bing News RSS search — query-capable aggregator, no API key. */
+export async function fetchBingNews(
+  query: string,
+  limit = 10,
+): Promise<RawArticle[]> {
+  try {
+    const url = `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`;
+    const res = await timedFetch(url, {
+      "User-Agent": "Mozilla/5.0 (compatible; Periscope/0.1)",
+    });
+    if (!res.ok) return [];
+    const doc = xml.parse(await res.text());
+    let items = doc?.rss?.channel?.item ?? [];
+    if (!Array.isArray(items)) items = [items];
+    return items
+      .slice(0, limit)
+      .map((it: Record<string, unknown>) => {
+        // Bing links are bing.com/news/apiclick redirects carrying the real
+        // article URL in ?url= — resolve it so dedupe and paywall checks work.
+        const realUrl = resolveBingUrl(String(it.link ?? ""));
+        const source = it["News:Source"] ?? it["news:Source"];
+        return {
+          title: String(it.title ?? ""),
+          url: realUrl,
+          source: source ? String(source) : hostnameOf(realUrl),
+          publishedAt: new Date(
+            String(it.pubDate ?? new Date().toUTCString()),
+          ).toISOString(),
+        };
+      })
+      .filter((a: RawArticle) => a.title && a.url.startsWith("http"));
+  } catch {
+    return [];
+  }
+}
+
+function resolveBingUrl(link: string): string {
+  try {
+    const real = new URL(link).searchParams.get("url");
+    return real ? decodeURIComponent(real) : link;
+  } catch {
+    return link;
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "Web";
+  }
+}
+
+// Outlets that hard-paywall most articles — filtered out per the product goal
+// of relying on popular, freely readable US sources. Google News items carry
+// only the outlet *name* (their URL is news.google.com), while Yahoo/Bing/HN
+// carry the real *domain* — so both must be checked.
+const PAYWALLED_NAMES = new Set(
+  [
+    "the wall street journal", "wall street journal", "wsj",
+    "the new york times", "new york times", "nytimes",
+    "bloomberg", "bloomberg news", "bloomberg.com",
+    "the washington post", "washington post",
+    "financial times", "the economist", "the athletic", "the information",
+    "business insider", "insider", "barron's", "barrons",
+    "los angeles times", "la times",
+  ].map((n) => n.replace(/[^a-z0-9]/g, "")),
+);
+
+const PAYWALLED_DOMAINS = [
+  "wsj.com", "nytimes.com", "bloomberg.com", "washingtonpost.com", "ft.com",
+  "economist.com", "theathletic.com", "theinformation.com",
+  "businessinsider.com", "barrons.com", "latimes.com",
+];
+
+export function isPaywalled(a: RawArticle): boolean {
+  const name = a.source.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (name && PAYWALLED_NAMES.has(name)) return true;
+  try {
+    const host = new URL(a.url).hostname.replace(/^www\./, "");
+    // Suffix match must be dot-anchored: "microsoft.com".endsWith("ft.com").
+    return PAYWALLED_DOMAINS.some(
+      (d) => host === d || host.endsWith("." + d),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Round-robin merge so no single source dominates the candidate pool. */
+export function interleave<T>(lists: T[][]): T[] {
+  const out: T[] = [];
+  for (let i = 0; lists.some((l) => i < l.length); i++) {
+    for (const l of lists) {
+      if (i < l.length) out.push(l[i]);
+    }
+  }
+  return out;
+}
+
 /** Hacker News via Algolia — strong for tech/startup topics, no API key. */
 export async function fetchHackerNews(
   query: string,

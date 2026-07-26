@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { dedupeCI, removeCI } from "@/lib/text";
 import type { UserProfile } from "@/lib/types";
 
 const clamp = (n: number) => Math.max(0.05, Math.min(1, Math.round(n * 100) / 100));
@@ -20,6 +21,7 @@ export default function ProfileSidebar({
   onUpdate: (p: UserProfile) => void;
 }) {
   const [newTopic, setNewTopic] = useState("");
+  const [newMuted, setNewMuted] = useState("");
   const interests = [...profile.interests].sort((a, b) => b.weight - a.weight);
 
   const bump = (topic: string, delta: number) =>
@@ -45,13 +47,31 @@ export default function ProfileSidebar({
     onUpdate({
       ...profile,
       interests: [...profile.interests, { topic: t, weight: 0.6 }].slice(0, 8),
-      // If it was on the avoid list, adding it back overrides that.
-      avoid: profile.avoid.filter((a) => a.toLowerCase() !== t.toLowerCase()),
+      // Following something overrides earlier avoid/mute signals for it.
+      avoid: removeCI(profile.avoid, t),
+      muted: removeCI(profile.muted, t),
     });
   };
 
   const unavoid = (a: string) =>
     onUpdate({ ...profile, avoid: profile.avoid.filter((x) => x !== a) });
+
+  const addMuted = () => {
+    const t = newMuted.trim();
+    setNewMuted("");
+    if (!t) return;
+    onUpdate({
+      ...profile,
+      muted: dedupeCI([...profile.muted, t]).slice(0, 10),
+      // Muting something removes a same-named interest.
+      interests: profile.interests.filter(
+        (i) => i.topic.toLowerCase() !== t.toLowerCase(),
+      ),
+    });
+  };
+
+  const unmute = (m: string) =>
+    onUpdate({ ...profile, muted: removeCI(profile.muted, m) });
 
   return (
     <div className="rounded-xl border border-line bg-card">
@@ -129,6 +149,45 @@ export default function ProfileSidebar({
           </div>
           <p className="mt-1 text-[10px] text-muted/60">
             Edits apply on the next ↻ Refresh or ✨ Tune.
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-xs uppercase tracking-wide text-muted/70">
+            Muted keywords
+          </p>
+          {profile.muted.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {profile.muted.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => unmute(m)}
+                  title="Unmute"
+                  className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-300 hover:border-amber-400/60"
+                >
+                  🚫 {m} ✕
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-1.5">
+            <input
+              value={newMuted}
+              onChange={(e) => setNewMuted(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addMuted()}
+              placeholder="Mute a phrase… (e.g. transfer rumors)"
+              className="min-w-0 flex-1 rounded-md border border-line bg-background/60 px-2 py-1 text-[12px] outline-none placeholder:text-muted/50 focus:border-amber-400/50"
+            />
+            <button
+              onClick={addMuted}
+              className="rounded-md border border-line px-2 py-1 text-[12px] text-muted hover:text-foreground"
+            >
+              Mute
+            </button>
+          </div>
+          <p className="mt-1 text-[10px] text-muted/60">
+            Articles whose titles contain a muted phrase are dropped before
+            ranking — even inside topics you follow.
           </p>
         </div>
 

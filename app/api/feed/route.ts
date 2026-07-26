@@ -15,6 +15,11 @@ export async function POST(req: Request) {
     exclude?: string[];
   };
   const excludeSet = new Set(Array.isArray(exclude) ? exclude : []);
+  if (profile) {
+    // Older clients may send profiles without newer fields.
+    profile.muted = profile.muted ?? [];
+    profile.hypotheses = profile.hypotheses ?? [];
+  }
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

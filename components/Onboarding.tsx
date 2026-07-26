@@ -42,6 +42,7 @@ export default function Onboarding({
       avoid: [],
       notes: [],
       searchHints: [],
+      muted: [],
       hypotheses: [],
       version: 1,
     });
