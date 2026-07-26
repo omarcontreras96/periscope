@@ -1,8 +1,8 @@
 # 🔭 Periscope — a newsfeed that learns you
 
 Self-improving, multi-agent newsfeed built in one day at the SundAI SF hack
-(Jul 26, 2026) by Omar ([@omarcontreras96](https://github.com/omarcontreras96))
-and James ([@128k](https://github.com/128k)).
+(Jul 26, 2026) by Omar Contreras Cabanillas ([@omarcontreras96](https://github.com/omarcontreras96)), MIT Sloan School of Management
+and James Mitchell ([@128k](https://github.com/128k)), University of Colorado Anschutz.
 
 **The loop:** an **orchestrator agent** reads your preference profile and plans
 what to search (including one deliberate "exploration" pick) → parallel
