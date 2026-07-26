@@ -126,7 +126,7 @@ export function heuristicKeywords(title: string, max = 4): string[] {
         const w = run[0];
         if (
           !STOPWORDS.has(w.toLowerCase()) &&
-          (w.length > 3 || w === w.toUpperCase())
+          (w.length > 3 || (w.length > 1 && w === w.toUpperCase()))
         ) {
           entities.push(w);
         }
