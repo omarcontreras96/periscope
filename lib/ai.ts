@@ -1,9 +1,17 @@
 import { generateText } from "ai";
 
-// Model routed through the Vercel AI Gateway ("provider/model" string).
+// Models routed through the Vercel AI Gateway ("provider/model" strings).
 // On Vercel deployments the gateway authenticates automatically via OIDC —
 // no API key needed. Locally, set AI_GATEWAY_API_KEY (see .env.example).
-const MODEL = process.env.AI_MODEL ?? "anthropic/claude-opus-4-8";
+// Tried in order: the gateway's free tier rate-limits frontier models, so we
+// fall back to a lighter model before giving up and going heuristic.
+const MODELS = [
+  ...new Set([
+    process.env.AI_MODEL ?? "anthropic/claude-opus-4-8",
+    "anthropic/claude-haiku-4.5",
+    "anthropic/claude-haiku-4-5",
+  ]),
+];
 
 export function aiConfigured(): boolean {
   return Boolean(
@@ -23,22 +31,29 @@ export async function askJSON<T>(opts: {
   prompt: string;
   maxOutputTokens?: number;
 }): Promise<T> {
-  try {
-    const { text } = await generateText({
-      model: MODEL,
-      system:
-        opts.system +
-        "\n\nRespond with a single valid JSON object and nothing else — no markdown fences, no commentary.",
-      prompt: opts.prompt,
-      maxOutputTokens: opts.maxOutputTokens ?? 2500,
-    });
-    return extractJSON<T>(text);
-  } catch (err) {
-    // Surface the cause in server logs — callers intentionally swallow this
-    // error to fall back to heuristic mode.
-    console.error("[periscope:ai]", err instanceof Error ? err.message : err);
-    throw err;
+  let lastErr: unknown;
+  for (const model of MODELS) {
+    try {
+      const { text } = await generateText({
+        model,
+        system:
+          opts.system +
+          "\n\nRespond with a single valid JSON object and nothing else — no markdown fences, no commentary.",
+        prompt: opts.prompt,
+        maxOutputTokens: opts.maxOutputTokens ?? 2500,
+      });
+      return extractJSON<T>(text);
+    } catch (err) {
+      // Surface the cause in server logs, then try the next model; callers
+      // swallow the final error to fall back to heuristic mode.
+      lastErr = err;
+      console.error(
+        `[periscope:ai] ${model}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+  throw lastErr;
 }
 
 export function extractJSON<T>(text: string): T {

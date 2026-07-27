@@ -12,7 +12,10 @@ export async function GET() {
     });
     return Response.json({
       ok: result.ok === true,
-      model: process.env.AI_MODEL ?? "anthropic/claude-opus-4-8",
+      modelChain: [
+        process.env.AI_MODEL ?? "anthropic/claude-opus-4-8",
+        "anthropic/claude-haiku-4.5 (free-tier fallback)",
+      ],
       aiConfigured: aiConfigured(),
     });
   } catch (err) {
