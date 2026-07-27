@@ -13,21 +13,15 @@ const clamp = (n: number) => Math.max(0.05, Math.min(1, Math.round(n * 100) / 10
  */
 export default function ProfileSidebar({
   profile,
-  apiKey,
   onReset,
   onUpdate,
-  onApiKey,
 }: {
   profile: UserProfile;
-  apiKey: string;
   onReset: () => void;
   onUpdate: (p: UserProfile) => void;
-  onApiKey: (k: string) => void;
 }) {
   const [newTopic, setNewTopic] = useState("");
   const [newMuted, setNewMuted] = useState("");
-  const [keyDraft, setKeyDraft] = useState(apiKey);
-  const [showKey, setShowKey] = useState(false);
   const interests = [...profile.interests].sort((a, b) => b.weight - a.weight);
 
   const bump = (topic: string, delta: number) =>
@@ -261,59 +255,6 @@ export default function ProfileSidebar({
           </div>
         )}
 
-        <div className="border-t border-line pt-3">
-          <p className="mb-1.5 text-xs uppercase tracking-wide text-muted/70">
-            Anthropic API key{" "}
-            <span className="normal-case">
-              {apiKey ? "(active)" : "(optional)"}
-            </span>
-          </p>
-          <div className="flex gap-1.5">
-            <input
-              type={showKey ? "text" : "password"}
-              value={keyDraft}
-              onChange={(e) => setKeyDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onApiKey(keyDraft)}
-              placeholder="sk-ant-…"
-              autoComplete="off"
-              spellCheck={false}
-              className="min-w-0 flex-1 rounded-md border border-line bg-background/60 px-2 py-1 font-mono text-[11px] outline-none placeholder:text-muted/50 focus:border-accent/60"
-            />
-            <button
-              onClick={() => setShowKey((s) => !s)}
-              className="rounded-md border border-line px-2 py-1 text-[12px] text-muted hover:text-foreground"
-              title={showKey ? "Hide key" : "Show key"}
-            >
-              {showKey ? "🙈" : "👁"}
-            </button>
-          </div>
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <button
-              onClick={() => onApiKey(keyDraft)}
-              disabled={keyDraft.trim() === apiKey}
-              className="rounded-md border border-line px-2 py-1 text-[12px] text-muted transition hover:border-accent/50 hover:text-accent disabled:opacity-40"
-            >
-              Save key
-            </button>
-            {apiKey && (
-              <button
-                onClick={() => {
-                  setKeyDraft("");
-                  onApiKey("");
-                }}
-                className="rounded-md border border-line px-2 py-1 text-[12px] text-muted transition hover:border-red-400/50 hover:text-red-400"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          <p className="mt-1 text-[10px] text-muted/60">
-            Runs the agents on your own key instead of heuristics. Kept in this
-            browser&apos;s localStorage and sent to this app&apos;s API routes
-            with each request — use a scoped key you can revoke, not a shared
-            production one.
-          </p>
-        </div>
       </div>
     </div>
   );

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AgentLog, { type LogLine } from "@/components/AgentLog";
+import ApiKeyBox from "@/components/ApiKeyBox";
+import BuildStamp from "@/components/BuildStamp";
 import ArticleCard from "@/components/ArticleCard";
 import HypothesisCard from "@/components/HypothesisCard";
 import Onboarding from "@/components/Onboarding";
@@ -320,7 +322,13 @@ export default function Home() {
 
   if (!ready) return null;
   if (!profile) {
-    return <Onboarding onStart={saveProfile} />;
+    return (
+      <Onboarding
+        onStart={saveProfile}
+        apiKey={apiKey}
+        onApiKey={saveApiKey}
+      />
+    );
   }
 
   const feedbackCount = pending.length;
@@ -335,8 +343,10 @@ export default function Home() {
             <h1 className="font-semibold tracking-tight">Periscope</h1>
             <p className="text-[11px] text-muted">
               orchestrator → search agents → evaluator
+              <BuildStamp className="ml-2 text-muted/60" />
             </p>
           </div>
+          <ApiKeyBox value={apiKey} onSave={saveApiKey} variant="header" />
           <button
             onClick={() => loadFeed(profile)}
             disabled={loading || tuning}
@@ -459,10 +469,8 @@ export default function Home() {
           <AgentLog lines={log} busy={loading || tuning} />
           <ProfileSidebar
             profile={profile}
-            apiKey={apiKey}
             onReset={reset}
             onUpdate={saveProfile}
-            onApiKey={saveApiKey}
           />
         </aside>
       </div>

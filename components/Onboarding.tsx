@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import ApiKeyBox from "@/components/ApiKeyBox";
+import BuildStamp from "@/components/BuildStamp";
 import type { UserProfile } from "@/lib/types";
 
 const PRESETS = [
@@ -20,8 +22,12 @@ const PRESETS = [
 
 export default function Onboarding({
   onStart,
+  apiKey,
+  onApiKey,
 }: {
   onStart: (profile: UserProfile) => void;
+  apiKey: string;
+  onApiKey: (k: string) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [custom, setCustom] = useState("");
@@ -57,6 +63,7 @@ export default function Onboarding({
           A newsfeed that learns you. Pick a few starting interests — the
           agents take it from there.
         </p>
+        <BuildStamp className="mt-2 block text-[11px] text-muted/60" />
       </div>
 
       <div className="flex flex-wrap justify-center gap-2">
@@ -84,6 +91,10 @@ export default function Onboarding({
               {t} ✕
             </button>
           ))}
+      </div>
+
+      <div className="w-full max-w-sm">
+        <ApiKeyBox value={apiKey} onSave={onApiKey} />
       </div>
 
       <div className="flex w-full max-w-sm gap-2">
