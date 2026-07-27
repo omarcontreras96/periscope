@@ -1,4 +1,5 @@
 import { askJSON } from "@/lib/ai";
+import { applyRemoval } from "@/lib/removal";
 import {
   articleId,
   dedupeRaw,
@@ -6,10 +7,9 @@ import {
   fetchGoogleNews,
   fetchHackerNews,
   interleave,
-  isPaywalled,
   type RawArticle,
 } from "@/lib/sources";
-import { dedupeCI, heuristicKeywords, matchesPhrase } from "@/lib/text";
+import { dedupeCI, heuristicKeywords } from "@/lib/text";
 import type {
   AgentEvent,
   Article,
@@ -43,11 +43,13 @@ export async function runSearchAgent(
     fetchHackerNews(plan.query, 6),
   ]);
   // Interleave before slicing so no aggregator drowns out the others, then
-  // hard-filter paywalled outlets and muted phrases before ranking.
-  const raw = dedupeRaw(interleave([gn, bg, hn]), exclude)
-    .filter((a) => !isPaywalled(a))
-    .filter((a) => !profile.muted.some((m) => matchesPhrase(a.title, m)))
-    .slice(0, 30);
+  // hard-filter paywalled outlets and muted phrases before ranking. The removal
+  // stage lives in lib/removal.ts so the prober can grade this exact code.
+  const removal = applyRemoval(
+    dedupeRaw(interleave([gn, bg, hn]), exclude),
+    profile.muted,
+  );
+  const raw = removal.kept.slice(0, 30);
   emit({ type: "articles", topic: plan.topic, count: raw.length });
   if (raw.length === 0) return [];
 

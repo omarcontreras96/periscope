@@ -86,6 +86,54 @@ export type EvaluateResponse = {
 };
 
 /** Mutable context threaded through a single pipeline run. */
+/** One adversarial test the prober designed for the removal stage. */
+export type Probe = {
+  /** Searchable topic that should return plenty of live candidates. */
+  topic: string;
+  /** Phrase to mute — a variant the matcher may miss. */
+  phrase: string;
+  /** What gap this probe is hunting for. */
+  rationale?: string;
+};
+
+export type ProbeProposal = {
+  kind: "add-muted" | "add-paywall-domain";
+  value: string;
+  reason: string;
+};
+
+/**
+ * The receipt for one probe: what was tried, what happened, what is proposed.
+ * Kept deliberately concrete — counts and real titles, not a self-assessment.
+ */
+export type ProbeReceipt = {
+  id: string;
+  /** ISO timestamp. */
+  at: string;
+  topic: string;
+  phrase: string;
+  rationale: string;
+  /** Candidates fetched before removal ran. */
+  candidates: number;
+  removedMuted: number;
+  removedPaywall: number;
+  survived: number;
+  /** Survivors the oracle says should have been removed (under-removal). */
+  leaks: string[];
+  /** Removals the oracle disagrees with (over-removal). */
+  falsePositives: string[];
+  verdict: "pass" | "leak" | "over-removal" | "no-data" | "error";
+  proposals: ProbeProposal[];
+  /** Set when the probe itself failed to run. */
+  error?: string;
+};
+
+export type SelfTestEvent =
+  | { type: "status"; message: string }
+  | { type: "receipt"; receipt: ProbeReceipt }
+  | { type: "done"; receipts: ProbeReceipt[] }
+  | { type: "error"; message: string };
+
 export type RunContext = {
   /** Set to false when any AI call fails and we fall back to heuristics. */
   aiOk: boolean;

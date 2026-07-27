@@ -8,6 +8,7 @@ import ArticleCard from "@/components/ArticleCard";
 import HypothesisCard from "@/components/HypothesisCard";
 import Onboarding from "@/components/Onboarding";
 import ProfileSidebar from "@/components/ProfileSidebar";
+import SelfTestPanel from "@/components/SelfTestPanel";
 import { dedupeCI, includesCI, removeCI, titleKey } from "@/lib/text";
 import type {
   AgentEvent,
@@ -15,7 +16,9 @@ import type {
   EvaluateResponse,
   FeedbackAction,
   FeedbackEvent,
+  ProbeReceipt,
   SearchPlanItem,
+  SelfTestEvent,
   UserProfile,
 } from "@/lib/types";
 
@@ -23,6 +26,9 @@ const PROFILE_KEY = "periscope.profile";
 const PENDING_KEY = "periscope.pending";
 /** Stored apart from the profile — the profile is fed to the LLM, keys are not. */
 const APIKEY_KEY = "periscope.apikey";
+const RECEIPTS_KEY = "periscope.receipts";
+/** Receipts are an audit trail; keep enough to see a trend, not unbounded. */
+const MAX_RECEIPTS = 30;
 const TUNE_THRESHOLD = 3;
 
 export default function Home() {
@@ -39,6 +45,9 @@ export default function Home() {
   const [degraded, setDegraded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [receipts, setReceipts] = useState<ProbeReceipt[]>([]);
+  const [selfTesting, setSelfTesting] = useState(false);
+  const [probeStatus, setProbeStatus] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const articlesRef = useRef<Article[]>([]);
   articlesRef.current = articles;
@@ -62,6 +71,8 @@ export default function Home() {
       const f = localStorage.getItem(PENDING_KEY);
       if (f) setPending(JSON.parse(f));
       setApiKey(localStorage.getItem(APIKEY_KEY) ?? "");
+      const r = localStorage.getItem(RECEIPTS_KEY);
+      if (r) setReceipts(JSON.parse(r));
     } catch {
       // corrupted storage — start fresh
     }
@@ -76,6 +87,87 @@ export default function Home() {
     setPending(f);
     localStorage.setItem(PENDING_KEY, JSON.stringify(f));
   };
+  const saveReceipts = (r: ProbeReceipt[]) => {
+    const capped = r.slice(0, MAX_RECEIPTS);
+    setReceipts(capped);
+    localStorage.setItem(RECEIPTS_KEY, JSON.stringify(capped));
+  };
+
+  /** Runs the prober and streams its receipts in as they land. */
+  const runSelfTest = async () => {
+    if (!profile || selfTesting) return;
+    setSelfTesting(true);
+    setProbeStatus("Designing probes…");
+    const fresh: ProbeReceipt[] = [];
+    try {
+      const res = await fetch("/api/selftest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKeyRef.current
+            ? { "x-anthropic-key": apiKeyRef.current }
+            : {}),
+        },
+        body: JSON.stringify({ profile, count: 4 }),
+      });
+      if (!res.ok || !res.body) {
+        throw new Error(`self-test request failed (${res.status})`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const e = JSON.parse(line) as SelfTestEvent;
+          if (e.type === "status") {
+            setProbeStatus(e.message);
+            setLog((l) => [...l, { agent: "prober", message: e.message }]);
+          } else if (e.type === "receipt") {
+            fresh.push(e.receipt);
+            // Newest first, alongside whatever history already existed.
+            setReceipts((prev) => [...fresh].reverse().concat(prev.filter((p) => !fresh.some((f) => f.id === p.id))).slice(0, MAX_RECEIPTS));
+          } else if (e.type === "error") {
+            setProbeStatus(e.message);
+          }
+        }
+      }
+      setReceipts((prev) => {
+        const merged = [...fresh].reverse().concat(prev.filter((p) => !fresh.some((f) => f.id === p.id))).slice(0, MAX_RECEIPTS);
+        localStorage.setItem(RECEIPTS_KEY, JSON.stringify(merged));
+        return merged;
+      });
+      const bad = fresh.filter(
+        (r) => r.verdict === "leak" || r.verdict === "over-removal",
+      ).length;
+      setProbeStatus(
+        `Done — ${fresh.length} probes, ${bad} problem${bad === 1 ? "" : "s"} found.`,
+      );
+    } catch (err) {
+      setProbeStatus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSelfTesting(false);
+    }
+  };
+
+  /** Applies a prober proposal by muting the phrase it flagged. */
+  const applyProposal = (value: string) => {
+    if (!profile || includesCI(profile.muted, value)) return;
+    saveProfile({
+      ...profile,
+      muted: dedupeCI([...profile.muted, value]).slice(0, 10),
+    });
+    setLog((l) => [
+      ...l,
+      { agent: "prober", message: `Applied proposal — muting “${value}”.` },
+    ]);
+  };
+
   const saveApiKey = (k: string) => {
     const trimmed = k.trim();
     setApiKey(trimmed);
@@ -467,6 +559,14 @@ export default function Home() {
 
         <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <AgentLog lines={log} busy={loading || tuning} />
+          <SelfTestPanel
+            receipts={receipts}
+            running={selfTesting}
+            status={probeStatus}
+            onRun={runSelfTest}
+            onClear={() => saveReceipts([])}
+            onApply={applyProposal}
+          />
           <ProfileSidebar
             profile={profile}
             onReset={reset}

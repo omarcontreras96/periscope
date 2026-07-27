@@ -72,6 +72,26 @@ stored on the hypothesis, treated as ground truth by orchestrator (next
 Refresh) and folded durably by the evaluator (next Tune). `sanitizeProfile`
 carries `userReply` from the previous profile only — LLM output can't alter it.
 
+**Prober (self-testing agent):** picks its own topics and mute phrases, runs
+them through `applyRemoval` — *the same function the search agent calls*, which
+is why the removal stage was extracted to `lib/removal.ts` — and grades the
+result against an independent oracle (`looseMatch`: diacritics-, punctuation-,
+case- and plural-insensitive). Verdicts: `leak` (survivor the oracle says
+should have gone), `over-removal` (dropped something the oracle disagrees with,
+or wiped the feed), `no-data` (the phrase never reached the mute stage, so
+nothing was proven — deliberately *not* reported as a pass), `pass`.
+
+Probes come from entities mined out of live headlines via `heuristicKeywords`,
+so accents and hyphenation get exercised; mutating a bare ASCII topic can only
+test plural/possessive. Each run emits a **receipt** (`ProbeReceipt`) with
+counts, the real leaked titles, and proposals naming the surface form that
+actually leaked — proposing the already-muted phrase would be a no-op.
+Receipts persist in `localStorage` under `periscope.receipts`; "Apply" writes
+the proposal into `profile.muted`, closing the loop through the shared memory.
+
+Known gap it found: `matchesPhrase` is literal, so muting `"World-Cup"` does
+not remove `"World Cup"` headlines.
+
 **Sources:** Google News RSS + Bing News RSS (both query-capable, keyless;
 Bing article URLs are resolved from its apiclick redirect) + Hacker News
 Algolia. (Yahoo News RSS was tried and dropped — it serves HTML, not RSS.)
@@ -103,6 +123,9 @@ are filtered by outlet name AND domain in `lib/sources.ts:isPaywalled`.
 | `lib/agents/orchestrator.ts` | Plans searches, fans out, merges |
 | `lib/agents/search.ts` | Per-topic fetch + LLM ranking |
 | `lib/agents/evaluator.ts` | Feedback → updated profile + "learned" summary |
+| `lib/removal.ts` | The removal stage (`applyRemoval`) + the grading oracle |
+| `lib/agents/prober.ts` | Self-testing agent: designs probes, grades removal, emits receipts |
+| `app/api/selftest/route.ts` | NDJSON streaming endpoint for a self-test cycle |
 | `app/api/feed/route.ts` | NDJSON streaming endpoint running the pipeline |
 | `app/api/evaluate/route.ts` | Evaluator endpoint |
 | `app/page.tsx` | Entire client app (state, streaming reader, feedback queue) |
