@@ -89,4 +89,9 @@ export type EvaluateResponse = {
 export type RunContext = {
   /** Set to false when any AI call fails and we fall back to heuristics. */
   aiOk: boolean;
+  /**
+   * Anthropic key the user supplied for this request. Deliberately NOT part of
+   * UserProfile — the profile is serialized into prompts and localStorage.
+   */
+  apiKey?: string;
 };

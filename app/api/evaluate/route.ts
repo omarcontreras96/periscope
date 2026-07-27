@@ -23,6 +23,8 @@ export async function POST(req: Request) {
   profile.muted = profile.muted ?? [];
   profile.hypotheses = profile.hypotheses ?? [];
 
-  const result = await runEvaluator(profile, feedback);
+  // Header, not body — see the note in app/api/feed/route.ts.
+  const apiKey = req.headers.get("x-anthropic-key")?.trim() || undefined;
+  const result = await runEvaluator(profile, feedback, apiKey);
   return Response.json(result);
 }

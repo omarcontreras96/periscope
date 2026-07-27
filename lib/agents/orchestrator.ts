@@ -30,7 +30,7 @@ export async function runOrchestrator(
 
   let plan: SearchPlanItem[];
   try {
-    plan = await planWithLLM(profile);
+    plan = await planWithLLM(profile, ctx.apiKey);
   } catch {
     ctx.aiOk = false;
     plan = planHeuristically(profile);
@@ -58,8 +58,12 @@ export async function runOrchestrator(
   return merged;
 }
 
-async function planWithLLM(profile: UserProfile): Promise<SearchPlanItem[]> {
+async function planWithLLM(
+  profile: UserProfile,
+  apiKey?: string,
+): Promise<SearchPlanItem[]> {
   const result = await askJSON<{ queries: SearchPlanItem[] }>({
+    apiKey,
     system:
       "You are the orchestrator of a personalized newsfeed. You decide what to search for this user right now.",
     prompt: `User profile:

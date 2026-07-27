@@ -15,9 +15,10 @@ import type {
 export async function runEvaluator(
   profile: UserProfile,
   feedback: FeedbackEvent[],
+  apiKey?: string,
 ): Promise<{ profile: UserProfile; learned: string[]; degraded: boolean }> {
   try {
-    const result = await evaluateWithLLM(profile, feedback);
+    const result = await evaluateWithLLM(profile, feedback, apiKey);
     return { ...result, degraded: false };
   } catch {
     const result = evaluateHeuristically(profile, feedback);
@@ -28,12 +29,14 @@ export async function runEvaluator(
 async function evaluateWithLLM(
   profile: UserProfile,
   feedback: FeedbackEvent[],
+  apiKey?: string,
 ): Promise<{ profile: UserProfile; learned: string[] }> {
   const events = feedback
     .map((f) => `- [${f.action}] "${f.title}" (topic: ${f.topic}, source: ${f.source})`)
     .join("\n");
 
   const result = await askJSON<{ profile: UserProfile; learned: string[] }>({
+    apiKey,
     system:
       "You are the evaluator agent of a self-improving newsfeed. You study the user's feedback and rewrite their preference profile so future searches serve them better.",
     prompt: `Current profile:

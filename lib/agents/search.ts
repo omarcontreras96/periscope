@@ -59,7 +59,7 @@ export async function runSearchAgent(
 
   let picks: Pick[];
   try {
-    picks = await rankWithLLM(plan, profile, raw);
+    picks = await rankWithLLM(plan, profile, raw, ctx.apiKey);
   } catch {
     ctx.aiOk = false;
     picks = rankHeuristically(plan, profile, raw);
@@ -96,6 +96,7 @@ async function rankWithLLM(
   plan: SearchPlanItem,
   profile: UserProfile,
   raw: RawArticle[],
+  apiKey?: string,
 ): Promise<Pick[]> {
   const candidates = raw
     .map(
@@ -105,6 +106,7 @@ async function rankWithLLM(
     .join("\n");
 
   const result = await askJSON<{ picks: Pick[] }>({
+    apiKey,
     system: `You are the search agent for the topic "${plan.topic}" in a personalized newsfeed. Select the articles this specific user will most want to read.`,
     prompt: `User profile:
 ${JSON.stringify(profile, null, 2)}

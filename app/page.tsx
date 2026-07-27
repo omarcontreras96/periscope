@@ -19,6 +19,8 @@ import type {
 
 const PROFILE_KEY = "periscope.profile";
 const PENDING_KEY = "periscope.pending";
+/** Stored apart from the profile — the profile is fed to the LLM, keys are not. */
+const APIKEY_KEY = "periscope.apikey";
 const TUNE_THRESHOLD = 3;
 
 export default function Home() {
@@ -34,9 +36,14 @@ export default function Home() {
   const [learned, setLearned] = useState<string[] | null>(null);
   const [degraded, setDegraded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState("");
   const loadingRef = useRef(false);
   const articlesRef = useRef<Article[]>([]);
   articlesRef.current = articles;
+  // Mirrored into a ref so request paths can read the current key without it
+  // becoming a useCallback dep (which would retrigger the feed on every keystroke).
+  const apiKeyRef = useRef("");
+  apiKeyRef.current = apiKey;
   // Synchronous double-react guard — state alone is stale within one tick.
   const reactedRef = useRef<Set<string>>(new Set());
 
@@ -52,6 +59,7 @@ export default function Home() {
       }
       const f = localStorage.getItem(PENDING_KEY);
       if (f) setPending(JSON.parse(f));
+      setApiKey(localStorage.getItem(APIKEY_KEY) ?? "");
     } catch {
       // corrupted storage — start fresh
     }
@@ -65,6 +73,12 @@ export default function Home() {
   const savePending = (f: FeedbackEvent[]) => {
     setPending(f);
     localStorage.setItem(PENDING_KEY, JSON.stringify(f));
+  };
+  const saveApiKey = (k: string) => {
+    const trimmed = k.trim();
+    setApiKey(trimmed);
+    if (trimmed) localStorage.setItem(APIKEY_KEY, trimmed);
+    else localStorage.removeItem(APIKEY_KEY);
   };
 
   const loadFeed = useCallback(async (p: UserProfile, append = false) => {
@@ -120,7 +134,12 @@ export default function Home() {
     try {
       const res = await fetch("/api/feed", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKeyRef.current
+            ? { "x-anthropic-key": apiKeyRef.current }
+            : {}),
+        },
         body: JSON.stringify({ profile: p, exclude }),
       });
       if (!res.ok || !res.body) {
@@ -257,7 +276,12 @@ export default function Home() {
     try {
       const res = await fetch("/api/evaluate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKeyRef.current
+            ? { "x-anthropic-key": apiKeyRef.current }
+            : {}),
+        },
         body: JSON.stringify({ profile, feedback: pending }),
       });
       if (!res.ok) throw new Error(`evaluate request failed (${res.status})`);
@@ -336,10 +360,10 @@ export default function Home() {
 
       {degraded && (
         <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-sm text-amber-300">
-          Heuristic mode — the AI Gateway declined the request, so ranking and
-          learning use simple rules. Usual fix: unlock free AI Gateway credits
-          (Vercel dashboard → AI Gateway) or set{" "}
-          <code className="font-mono">AI_GATEWAY_API_KEY</code>. Details at{" "}
+          Heuristic mode — no working model route, so ranking and learning use
+          simple rules. Paste an Anthropic API key in the sidebar to run the
+          agents for real, or unlock AI Gateway credits (Vercel dashboard → AI
+          Gateway). Details at{" "}
           <a href="/api/debug-ai" className="underline">/api/debug-ai</a>.
         </div>
       )}
@@ -435,8 +459,10 @@ export default function Home() {
           <AgentLog lines={log} busy={loading || tuning} />
           <ProfileSidebar
             profile={profile}
+            apiKey={apiKey}
             onReset={reset}
             onUpdate={saveProfile}
+            onApiKey={saveApiKey}
           />
         </aside>
       </div>

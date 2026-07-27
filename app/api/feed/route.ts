@@ -14,6 +14,9 @@ export async function POST(req: Request) {
     /** Article ids / title keys the client already shows ("load more" pages). */
     exclude?: string[];
   };
+  // Read via header, not the body: keeps the key out of request-body logging
+  // and out of the profile object that gets serialized into prompts.
+  const apiKey = req.headers.get("x-anthropic-key")?.trim() || undefined;
   const excludeSet = new Set(Array.isArray(exclude) ? exclude : []);
   if (profile) {
     // Older clients may send profiles without newer fields.
@@ -26,7 +29,7 @@ export async function POST(req: Request) {
     async start(controller) {
       const emit = (e: AgentEvent) =>
         controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
-      const ctx: RunContext = { aiOk: aiConfigured() };
+      const ctx: RunContext = { aiOk: aiConfigured(apiKey), apiKey };
       try {
         const articles = await runOrchestrator(profile, ctx, emit, excludeSet);
         emit({ type: "feed", articles, degraded: !ctx.aiOk });
