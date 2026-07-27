@@ -76,6 +76,29 @@ const CONNECTORS = new Set([
   "of", "de", "del", "la", "le", "di", "da", "van", "von", "der", "el", "al", "&",
 ]);
 
+/**
+ * Headline furniture — generic nouns aggregators Title-Case alongside real
+ * entities ("Rangers vs West Ham Match Results Today: Club Friendly Live
+ * Score"). In Title-Cased headlines these break entity runs; without them a run
+ * swallows the whole headline.
+ */
+const GENERIC = new Set([
+  "match", "matches", "result", "results", "score", "scores", "stat", "stats",
+  "lineup", "lineups", "preview", "previews", "recap", "highlights", "analysis",
+  "reaction", "reactions", "takeaways", "roundup", "round-up", "today",
+  "tonight", "tomorrow", "yesterday", "club", "friendly", "preseason",
+  "pre-season", "season", "kickoff", "kick-off", "time", "date", "channel",
+  "odds", "prediction", "predictions", "betting", "schedule", "standings",
+  "table", "fixture", "fixtures", "guide", "final", "full", "vs", "versus",
+  "need", "know", "everything", "stream", "streaming", "tv",
+  // headline verbs — Title-Cased alongside entities but never part of one
+  "announces", "unveils", "launches", "reveals", "confirms", "denies", "calls",
+  "adds", "plans", "eyes", "joins", "signs", "names", "picks", "drops",
+  "faces", "hits", "sets", "wins", "beats", "loses", "opens", "closes",
+  "raises", "cuts", "buys", "sells", "sues", "backs", "warns", "urges",
+  "seeks", "weighs", "expands", "targets", "acquires",
+]);
+
 const CAP_TOKEN = /^\p{Lu}[\p{L}\p{M}\p{N}'’.-]*$/u;
 
 function cleanToken(w: string): string {
@@ -100,16 +123,18 @@ function endsClause(raw: string): boolean {
 export function heuristicKeywords(title: string, max = 4): string[] {
   const tokens = title.normalize("NFC").split(/\s+/).map(cleanToken).filter(Boolean);
 
-  // Title-Case guard: when nearly every long word is capitalized, capitalized
-  // runs would swallow the whole headline as one "entity".
+  // Title-Case detection: when nearly every long word is capitalized we can't
+  // use capitalization alone to spot entities, so stopwords and headline
+  // furniture become run-breakers instead (see GENERIC).
   const longTokens = tokens.filter((w) => w.length > 3);
   const capRatio = longTokens.length
     ? longTokens.filter((w) => CAP_TOKEN.test(w)).length / longTokens.length
     : 1;
+  const titleCase = capRatio > 0.7;
 
   const rawTokens = title.normalize("NFC").split(/\s+/).filter(Boolean);
   const entities: string[] = [];
-  if (capRatio <= 0.7) {
+  {
     let run: string[] = [];
     const flush = () => {
       // Strip leading stopwords (sentence starters like "Is", "Why") and
@@ -139,7 +164,11 @@ export function heuristicKeywords(title: string, max = 4): string[] {
         flush();
         continue;
       }
-      if (CAP_TOKEN.test(w)) {
+      // In a Title-Cased headline capitalization carries no signal, so generic
+      // words end the entity instead of extending it.
+      if (titleCase && (STOPWORDS.has(w.toLowerCase()) || GENERIC.has(w.toLowerCase()))) {
+        flush();
+      } else if (CAP_TOKEN.test(w)) {
         run.push(w);
       } else if (
         run.length > 0 &&
@@ -158,7 +187,11 @@ export function heuristicKeywords(title: string, max = 4): string[] {
     flush();
   }
 
-  const out = dedupeCI(entities).slice(0, max);
+  // Multi-word entities are the point ("Real Madrid" over "Rangers"), so they
+  // win the limited slots. Array.sort is stable, so ties keep headline order.
+  const out = dedupeCI(entities)
+    .sort((a, b) => (b.includes(" ") ? 1 : 0) - (a.includes(" ") ? 1 : 0))
+    .slice(0, max);
 
   // Top up with meaningful single words when entity extraction came up short.
   if (out.length < 2) {
@@ -168,6 +201,7 @@ export function heuristicKeywords(title: string, max = 4): string[] {
       if (
         w.length > 4 &&
         !STOPWORDS.has(k) &&
+        !GENERIC.has(k) &&
         !out.some((o) => o.toLowerCase().includes(k))
       ) {
         out.push(w);
